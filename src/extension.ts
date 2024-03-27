@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
+import { env } from "process";
+
 
 interface PackageJSON {
     name: string;
@@ -38,62 +41,61 @@ function insertReadmeTemplate() {
     if (editor) {
         const selection = editor.selection;
         const range = new vscode.Range(selection.start, selection.end);
-        editor.edit(editBuilder => {
-            editBuilder.replace(range, template);
+        editor.edit(async editBuilder => {
+            editBuilder.replace(range, await template);
         });
     }
 }
 
-function generateReadmeTemplate(files: string[], packageJson?: PackageJSON): string {
-    let template = `# Título del Proyecto
+async function generateReadmeTemplate(files: string[], packageJson?: PackageJSON): Promise<string> {
+	const genAI = new GoogleGenerativeAI(env.GEN_IA_API!);
+	const model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" });
+    const generationConfig = {
+        temperature: 0.9,
+        topK: 1,
+        topP: 1,
+        maxOutputTokens: 2048,
+      };
 
-`;
+      const safetySettings = [
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+      ];
+	  const chat = model.startChat({
+		generationConfig,
+		safetySettings,
+		history: [
+		  {
+			role: "user",
+			parts: [{ text: "Quiero que a base de los siguientes datos generes un EXCELENTE readme"}],
+		  },
+		  {
+			role: "model",
+			parts: [{ text: "**Nombre del proyecto:** Proyecto Increíble\n\n**Descripción:**\n\nEl Proyecto Increíble es una iniciativa innovadora que aborda [propósito del proyecto]. Creemos que este proyecto tendrá un impacto significativo al [objetivo del proyecto].\n\n**Objetivos:**\n\n* Lograr [objetivo 1]\n* Conseguir [objetivo 2]\n* Facilitar [objetivo 3]\n\n**Público objetivo:**\n\n* [Público objetivo 1]\n* [Público objetivo 2]\n* [Público objetivo 3]\n\n**Tecnología:**\n\nEl proyecto utiliza las siguientes tecnologías:\n\n* [Tecnología 1]\n* [Tecnología 2]\n* [Tecnología 3]\n\n**Beneficios:**\n\nEl uso de este proyecto aportará los siguientes beneficios:\n\n* [Beneficio 1]\n* [Beneficio 2]\n* [Beneficio 3]\n\n**Cómo contribuir:**\n\nSomos una comunidad abierta y acogedora, y damos la bienvenida a todas las contribuciones. Puedes colaborar de las siguientes maneras:\n\n* [Método de contribución 1]\n* [Método de contribución 2]\n* [Método de contribución 3]\n\n**Documentación:**\n\n* [Enlace a la documentación del proyecto]\n\n**Contacto:**\n\nSi tienes alguna pregunta o comentario, no dudes en ponerte en contacto con nosotros en:\n\n* [Dirección de correo electrónico]\n* [Número de teléfono]\n* [Nombre de usuario de redes sociales]\n\n**Licencia:**\n\nEl Proyecto Increíble está licenciado bajo [nombre de licencia]."}],
+		  },
+		],
+	  });
+	
+	  const result = await chat.sendMessage(`${files} ${packageJson}`);
+	  const response = result.response;
+	//   console.log(response.text());
 
-    if (packageJson) {
-        template += `Nombre del Proyecto: ${packageJson.name}\n`;
-        if (packageJson.description) {
-            template += `Descripción: ${packageJson.description}\n`;
-        }
-        if (packageJson.dependencies) {
-            template += '\n## Dependencias\n';
-            for (const [dependency, version] of Object.entries(packageJson.dependencies)) {
-                template += `- ${dependency}: ${version}\n`;
-            }
-        }
-        if (packageJson.devDependencies) {
-            template += '\n## Dependencias de Desarrollo\n';
-            for (const [dependency, version] of Object.entries(packageJson.devDependencies)) {
-                template += `- ${dependency}: ${version}\n`;
-            }
-        }
-        template += '\n';
-    }
 
-    template += '## Lista de archivos del proyecto\n';
-    template += files.map(file => `- ${file}`).join('\n');
-
-    template += `\n
-## Empezando
-
-Instrucciones para empezar con el proyecto
-
-## Instalación
-
-Pasos para instalar el proyecto
-
-## Uso
-
-Ejemplos de uso y capturas de pantalla
-
-## Contribuyendo
-
-Instrucciones para contribuir al proyecto
-
-## Licencia
-
-Este proyecto está bajo la Licencia (nombre de la licencia) - ver el archivo [LICENSE.md](LICENSE.md) para detalles`;
-
-    return template;
+    return response.text();
 }
 
 function getProjectFiles(rootPath: string): string[] {
