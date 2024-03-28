@@ -20,7 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(disposable);
 }
 
-function insertReadmeTemplate() {
+async function insertReadmeTemplate() {
     const rootPath = vscode.workspace.rootPath;
     if (!rootPath) {
         vscode.window.showErrorMessage('No se ha encontrado un proyecto abierto.');
@@ -35,14 +35,14 @@ function insertReadmeTemplate() {
         return;
     }
 
-    const template = generateReadmeTemplate(files, packageJson);
+    const template = await generateReadmeTemplate(files, packageJson);
 
     const editor = vscode.window.activeTextEditor;
     if (editor) {
         const selection = editor.selection;
         const range = new vscode.Range(selection.start, selection.end);
         editor.edit(async editBuilder => {
-            editBuilder.replace(range, await template);
+            editBuilder.replace(range, template);
         });
     }
 }
